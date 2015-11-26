@@ -1077,7 +1077,10 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                            'bridge': bridge})
                 sys.exit(1)
             br = self.br_phys_cls(bridge)
+            br.set_agent_uuid_stamp(self.agent_uuid_stamp)
             br.setup_controllers(self.conf)
+            if cfg.CONF.AGENT.drop_flows_on_start:
+                br.delete_flows()
             br.setup_default_table()
             self.phys_brs[physical_network] = br
 
@@ -1630,10 +1633,19 @@ class OVSNeutronAgent(sg_rpc.SecurityGroupAgentRpcCallbackMixin,
                 'removed': len(ancillary_port_info.get('removed', []))}
         return port_stats
 
+    def _get_physical_bridges(self):
+        bridges = []
+        for _, bridge in self.bridge_mappings.iteritems():
+            br = ovs_lib.OVSBridge(bridge, self.root_helper)
+            br.set_agent_uuid_stamp(self.agent_uuid_stamp)
+            bridges.append(br)
+        return bridges
+
     def cleanup_stale_flows(self):
         bridges = [self.int_br]
         if self.enable_tunneling:
             bridges.append(self.tun_br)
+        bridges += self._get_physical_bridges()
         for bridge in bridges:
             LOG.info(_LI("Cleaning stale %s flows"), bridge.br_name)
             bridge.cleanup_flows()
